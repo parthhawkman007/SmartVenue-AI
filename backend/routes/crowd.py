@@ -63,10 +63,25 @@ async def fetch_and_map_zones(event: str) -> List[ZoneDensity]:
 
 @router.get("/crowd", response_model=List[ZoneDensity])
 async def get_crowd(event: str = "F1", user: dict = Depends(get_current_user)):
-    if not await is_system_active():
-        return JSONResponse(content={"status": "idle", "message": "System inactive. Waiting for admin to start event."})
+    """
+    Retrieves real-time crowd density metrics across all monitored zones.
     
-    return await fetch_and_map_zones(event)
+    - **event**: The physical domain mapping (e.g., 'F1', 'Football').
+    
+    Returns a list of zones with their calculated density percentage, 
+    current status, and observed trends.
+    """
+    if not await is_system_active():
+        raise HTTPException(
+            status_code=503,
+            detail="System is currently idle. Waiting for administrative activation."
+        )
+    
+    try:
+        return await fetch_and_map_zones(event)
+    except Exception as e:
+        print(f"[CROWD ERROR] {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve crowd density streams.")
 
 @router.post("/crowd", response_model=ZoneDensity, status_code=status.HTTP_201_CREATED)
 async def create_or_update_crowd_density(data: ZoneDensity):

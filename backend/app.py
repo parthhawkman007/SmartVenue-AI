@@ -29,7 +29,10 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Secure logging middleware tracking speed cleanly avoiding sensitive data."""
+    """
+    Secure logging middleware tracking API performance.
+    Captures execution time without exposing sensitive request data.
+    """
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
@@ -41,15 +44,30 @@ import datetime
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """High-security Global Exception mapping to secure abstract JSON schemas systematically."""
+    """
+    Global Exception mapping to secure abstract JSON schemas.
+    Obfuscates raw stack traces in production to prevent information leakage.
+    """
     return JSONResponse(
         status_code=500,
         content={
-            "error": "An internal server error occurred.", # obfuscate actual exception
+            "error": "An internal server error occurred.", 
             "type": type(exc).__name__,
             "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
         }
     )
+
+@app.get("/")
+async def root():
+    """
+    Root system status endpoint for heartbeat and health pings.
+    """
+    return {
+        "status": "online",
+        "service": "SmartVenue AI Intelligence Engine",
+        "version": "1.0.0",
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+    }
 
 # Connect Modulated Fast API Routers natively
 app.include_router(crowd.router, tags=["Crowd Streams"])

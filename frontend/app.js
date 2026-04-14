@@ -18,6 +18,11 @@ let currentToken = null;
 let currentRole = "user";
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize Lucide Icons
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+
     // Structural Bindings
     const API_BASE = 'https://smartvenue-api-1077180830187.asia-south1.run.app';
 
@@ -48,7 +53,11 @@ document.addEventListener('DOMContentLoaded', () => {
         adminStartSystemBtn: document.getElementById('adminStartSystemBtn'),
         adminStopSystemBtn: document.getElementById('adminStopSystemBtn'),
         systemStatusIndicator: document.getElementById('systemStatusIndicator'),
-        systemStatusText: document.getElementById('systemStatusText')
+        systemStatusText: document.getElementById('systemStatusText'),
+        lastSyncTime: document.getElementById('last-sync-time'),
+        statusDot: document.getElementById('status-dot'),
+        statusText: document.getElementById('status-text'),
+        emergencyToast: document.getElementById('emergency-toast')
     };
 
     let syncInterval = null;
@@ -209,20 +218,37 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchViewData = async (target) => {
+        /**
+         * Fetches situational data for the active dashboard view.
+         * Implements structural try-catch with global loading state management.
+         */
         if (!currentToken) return;
         DOM.loader.classList.add('active');
         try {
             const evt = DOM.eventTypeToggle.value;
             const params = `?event=${evt}`;
-            const headers = { "Authorization": `Bearer ${currentToken}` };
+            const headers = { 
+                "Authorization": `Bearer ${currentToken}`,
+                "Content-Type": "application/json"
+            };
             
-            // Map target to API domain logically mapped
             let domain = target;
             if (target === 'dashboard' || target === 'analytics') domain = 'crowd';
-            if (target === 'controls') return; // Native controls, no dynamic fetch required
+            if (target === 'controls') return; 
             
             const res = await fetch(`${API_BASE}/${domain}${params}`, { headers });
-            if (res.status === 401 || res.status === 403) throw new Error("Unauthorized");
+            
+            if (res.status === 401 || res.status === 403) {
+                console.error("Auth session expired or insufficient privileges.");
+                await auth.signOut();
+                return;
+            }
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({ detail: "Unknown server error" }));
+                throw new Error(errData.detail || `HTTP ${res.status}`);
+            }
+
             const data = await res.json();
             
             if (data.status === 'idle') {
@@ -234,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // Strictly enforce isolated state slices
+            // Map data to local state slices and trigger renderers
             if (domain === 'crowd') {
                 state.crowd = data;
                 if (target === 'dashboard') renderDashboard(state.crowd);
@@ -250,9 +276,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderEnvironment(state.environment);
             }
         } catch (err) {
-            console.error(`Isolated tab fetch error for ${target}:`, err);
+            console.error(`[API FETCH ERROR] ${target}:`, err);
+            // Human-readable error polish
+            const msg = `Unable to load ${target}. Please check system connectivity or try again.`;
+            if (target === 'dashboard') DOM.zones.innerHTML = `<div style="color:var(--danger)">${msg}</div>`;
         } finally {
             DOM.loader.classList.remove('active');
+            // Update Sync Status Panel
+            if (DOM.lastSyncTime) DOM.lastSyncTime.innerText = new Date().toLocaleTimeString();
+            
+            const hasCriticalAlerts = state.alerts && state.alerts.some(a => a.level === 'critical');
+            if (hasCriticalAlerts) {
+                DOM.statusDot.className = 'status-dot dot-critical';
+                DOM.statusText.innerText = 'Critical Thresholds Detected';
+                DOM.statusText.style.color = 'var(--danger)';
+            } else {
+                DOM.statusDot.className = 'status-dot dot-stable';
+                DOM.statusText.innerText = 'Stable Operations';
+                DOM.statusText.style.color = 'var(--safe)';
+            }
         }
     };
 
@@ -298,7 +340,18 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Attach Interactivity
-    DOM.simulateBtn.addEventListener('click', () => triggerFullSyncCycle(true));
+    DOM.simulateBtn.addEventListener('click', () => {
+        // UI Feedback: Emergency Scenario
+        DOM.emergencyToast.style.display = 'flex';
+        document.body.classList.add('emergency-active');
+        
+        setTimeout(() => {
+            DOM.emergencyToast.style.display = 'none';
+            document.body.classList.remove('emergency-active');
+        }, 3000);
+
+        triggerFullSyncCycle(true);
+    });
     DOM.eventTypeToggle.addEventListener('change', () => triggerFullSyncCycle(false));
 
     DOM.autoToggle.addEventListener('change', (e) => {
@@ -329,14 +382,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     DOM.systemStatusText.innerText = 'ACTIVE';
                     DOM.systemStatusText.style.color = 'var(--safe)';
                     
-                    // Enable Live Sync functionality seamlessly
                     DOM.autoToggle.checked = true;
                     DOM.autoToggle.dispatchEvent(new Event('change'));
                 } else {
-                    alert("Failed to start system. Token validation rejected.");
+                    const err = await res.json();
+                    alert(`System Activation Failed: ${err.detail || "Unknown reason"}`);
                 }
             } catch (e) {
-                console.error(e);
+                console.error("[ADMIN START ERROR]", e);
+                alert("Critical failure during system engagement.");
             } finally {
                 DOM.loader.classList.remove('active');
             }
@@ -357,14 +411,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     DOM.systemStatusText.innerText = 'IDLE';
                     DOM.systemStatusText.style.color = 'var(--text-muted)';
                     
-                    // Disable Live Sync gracefully
                     DOM.autoToggle.checked = false;
                     DOM.autoToggle.dispatchEvent(new Event('change'));
                 } else {
                     alert("Failed to stop system cleanly.");
                 }
             } catch (e) {
-                console.error(e);
+                console.error("[ADMIN STOP ERROR]", e);
             } finally {
                 DOM.loader.classList.remove('active');
             }
@@ -383,9 +436,26 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     DOM.authForm.addEventListener('submit', async (e) => {
+        /**
+         * Orchestrates the authentication lifecycle.
+         * Includes structural input validation to prevent redundant Firebase pings.
+         */
         e.preventDefault();
-        const email = DOM.authEmail.value;
+        const email = DOM.authEmail.value.trim();
         const password = DOM.authPassword.value;
+
+        // --- Production Validation Bounds ---
+        if (!email || !password) {
+            alert("Please fill in both email and password fields.");
+            return;
+        }
+
+        if (password.length < 6) {
+            alert("Security requirement: Password must be at least 6 characters.");
+            return;
+        }
+
+        DOM.loader.classList.add('active');
         try {
             if (isSignup) {
                 await auth.createUserWithEmailAndPassword(email, password);
@@ -393,8 +463,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 await auth.signInWithEmailAndPassword(email, password);
             }
         } catch (err) {
-            console.error("Auth Error:", err);
-            alert(err.message);
+            console.error("[AUTH ERROR]", err.code, err.message);
+            alert(`Authentication Failed: ${err.message}`);
+        } finally {
+            DOM.loader.classList.remove('active');
         }
     });
 
@@ -414,6 +486,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle Auth States natively blocking arrays securely
     auth.onAuthStateChanged(async (user) => {
+        /**
+         * Master session observer.
+         * Enforces role-based UI mapping and manages secure token propagation.
+         */
         if (user) {
             // Retrieve JWT for Backend Execution
             currentToken = await user.getIdToken();
@@ -423,41 +499,46 @@ document.addEventListener('DOMContentLoaded', () => {
             // Map UI dynamically
             DOM.userDisplayEmail.innerText = user.email;
             
-            // Manage Structural Roles
-            const userDocRef = db.collection('users').doc(user.uid);
-            let userDoc = await userDocRef.get();
-            
-            if (!userDoc.exists) {
-                const ADMIN_EMAIL = "bhardwajparth185@gmail.com";
-                const assignedRole = (user.email === ADMIN_EMAIL) ? 'admin' : 'user';
+            // Manage Structural Roles from Firestore
+            try {
+                const userDocRef = db.collection('users').doc(user.uid);
+                let userDoc = await userDocRef.get();
                 
-                await userDocRef.set({
-                    uid: user.uid,
-                    email: user.email,
-                    role: assignedRole,
-                    created_at: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                if (!userDoc.exists) {
+                    const ADMIN_EMAIL = "bhardwajparth185@gmail.com";
+                    const assignedRole = (user.email === ADMIN_EMAIL) ? 'admin' : 'user';
+                    
+                    await userDocRef.set({
+                        uid: user.uid,
+                        email: user.email,
+                        role: assignedRole,
+                        created_at: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    
+                    currentRole = assignedRole;
+                } else {
+                    currentRole = userDoc.data().role || 'user';
+                }
                 
-                currentRole = assignedRole;
-            } else {
-                currentRole = userDoc.data().role || 'user';
-            }
-            
-            DOM.userDisplayRole.innerText = currentRole;
-            if (currentRole === 'admin') {
-                DOM.userDisplayRole.style.background = 'rgba(234, 179, 8, 0.2)';
-                DOM.userDisplayRole.style.color = 'var(--caution)';
-                DOM.adminOnlyBtns.forEach(el => el.style.display = 'flex');
-                DOM.simulateBtn.style.display = 'block';
-            } else {
-                DOM.userDisplayRole.style.background = 'rgba(255,255,255,0.1)';
-                DOM.userDisplayRole.style.color = 'white';
-                DOM.adminOnlyBtns.forEach(el => el.style.display = 'none');
-                DOM.simulateBtn.style.display = 'none';
-            }
+                state.userRole = currentRole; // Sync to global state
+                DOM.userDisplayRole.innerText = currentRole;
+                
+                if (currentRole === 'admin') {
+                    DOM.userDisplayRole.style.color = 'var(--primary)';
+                    DOM.adminOnlyBtns.forEach(el => el.style.display = 'flex');
+                    DOM.simulateBtn.style.display = 'block';
+                } else {
+                    DOM.userDisplayRole.style.color = '#9ca3af';
+                    DOM.adminOnlyBtns.forEach(el => el.style.display = 'none');
+                    DOM.simulateBtn.style.display = 'none';
+                }
 
-            // Immediately Trigger execution bounds cleanly now authorized!
-            triggerFullSyncCycle(false);
+                // Immediately Trigger execution bounds cleanly now authorized!
+                triggerFullSyncCycle(false);
+            } catch (err) {
+                console.error("[ROLE SYNC ERROR]", err);
+                alert("Critical error retrieving user privileges. Some features may be locked.");
+            }
         } else {
             // Reset to Login State seamlessly dropping arrays avoiding stale ghosts
             if (syncInterval) clearInterval(syncInterval);

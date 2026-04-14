@@ -12,25 +12,38 @@ router = APIRouter(prefix="/admin", tags=["Admin Controls"])
 
 @router.post("/system/start")
 async def start_system(event_type: str = "F1", user: dict = Depends(require_admin)):
+    """
+    Activates the global intelligence processing engine for a specific event domain.
+    
+    - **event_type**: The configuration mapping to apply (e.g., 'F1', 'Football').
+    - **user**: Admin credentials verification.
+    """
     db = await get_db()
-    if db:
-        await db.collection("system_state").document("global").set({
-            "active": True,
-            "event_type": event_type,
-            "started_by": user["uid"],
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
-        })
+    if not db:
+        raise HTTPException(status_code=500, detail="Database instance unavailable.")
+        
+    await db.collection("system_state").document("global").set({
+        "active": True,
+        "event_type": event_type,
+        "started_by": user["uid"],
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+    })
     return {"status": "success", "message": f"System actively engaged mapping '{event_type}' seamlessly!"}
 
 @router.post("/system/stop")
 async def stop_system(user: dict = Depends(require_admin)):
+    """
+    Gracefully halts the intelligence processing engine and puts the system in IDLE mode.
+    """
     db = await get_db()
-    if db:
-        await db.collection("system_state").document("global").set({
-            "active": False,
-            "stopped_by": user["uid"],
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
-        }, merge=True)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database instance unavailable.")
+        
+    await db.collection("system_state").document("global").set({
+        "active": False,
+        "stopped_by": user["uid"],
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+    }, merge=True)
     return {"status": "success", "message": "System disengaged safely!"}
 
 @router.post("/users/role")
