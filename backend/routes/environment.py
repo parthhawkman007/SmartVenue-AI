@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Any
-from models.schemas import EnvironmentResponse, APIResponse, success_response, EventType
-from firestore.database import is_system_active
-from services.auth import get_current_user
+from ..models.schemas import EnvironmentResponse, APIResponse, success_response, EventType
+from ..firestore.database import is_system_active
+from ..services.auth import get_current_user
 import random
 
 router = APIRouter()

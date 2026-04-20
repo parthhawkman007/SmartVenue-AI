@@ -1,6 +1,6 @@
 import random
 from typing import List, Dict
-from models.schemas import ZoneDensity, InsightsResponse, Alert, Recommendation, EventType
+from ..models.schemas import ZoneDensity, InsightsResponse, Alert, Recommendation, EventType
 
 PREVIOUS_DENSITY: Dict[str, int] = {}
 
@@ -40,7 +40,7 @@ def compute_trend(zone: str, current_density: int) -> str:
     return "stable"
 
 import asyncio
-from services.gemini_service import generate_insight_async
+from .gemini_service import generate_insight_async
 
 async def evaluate_insights(zones: List[ZoneDensity], event_type: EventType = EventType.F1) -> InsightsResponse:
     """Evaluates AI insights synchronously tracking memory states."""

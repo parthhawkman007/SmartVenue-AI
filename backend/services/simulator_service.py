@@ -1,7 +1,7 @@
 import random
 from typing import List
-from models.schemas import ZoneDensity, EventType
-from services.crowd_service import PREVIOUS_DENSITY
+from ..models.schemas import ZoneDensity, EventType
+from .crowd_service import PREVIOUS_DENSITY
 
 def generate_simulated_data(event: EventType = EventType.F1) -> List[ZoneDensity]:
     """Generates jittered simulated payloads reflecting physical environments."""

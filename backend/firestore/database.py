@@ -30,7 +30,7 @@ async def is_system_active() -> bool:
 
 async def setup_database():
     """Seed Firestore with baseline venue data when the collection is empty."""
-    from models.schemas import ZoneDensity, EventType
+    from ..models.schemas import ZoneDensity, EventType
     if db is not None:
         try:
             docs = [doc async for doc in db.collection("crowd_data").limit(1).stream()]

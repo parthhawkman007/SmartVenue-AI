@@ -3,12 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import time
 
-from routes import crowd, insights, alerts, environment, admin
-from models.schemas import success_response, error_response
-from firestore.database import db, setup_database
+from .routes import crowd, insights, alerts, environment, admin
+from .models.schemas import success_response, error_response
+from .firestore.database import db, setup_database
 from contextlib import asynccontextmanager
 
-from core.config import settings
+from .core.config import settings
 
 logger = logging.getLogger(__name__)
 

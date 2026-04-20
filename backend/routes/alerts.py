@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Any
-from models.schemas import Alert, APIResponse, success_response, EventType
-from firestore.database import is_system_active
-from routes.crowd import fetch_and_map_zones
-from services.crowd_service import evaluate_alerts
-from services.auth import get_current_user
+from ..models.schemas import Alert, APIResponse, success_response, EventType
+from ..firestore.database import is_system_active
+from .crowd import fetch_and_map_zones
+from ..services.crowd_service import evaluate_alerts
+from ..services.auth import get_current_user
 
 router = APIRouter()
 

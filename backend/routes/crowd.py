@@ -2,11 +2,11 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from typing import List, Any
 import logging
 
-from models.schemas import ZoneDensity, APIResponse, success_response, EventType
-from firestore.database import db, is_system_active
-from services.crowd_service import compute_trend, map_zone_names
-from services.simulator_service import generate_simulated_data
-from services.auth import get_current_user, require_admin
+from ..models.schemas import ZoneDensity, APIResponse, success_response, EventType
+from ..firestore.database import db, is_system_active
+from ..services.crowd_service import compute_trend, map_zone_names
+from ..services.simulator_service import generate_simulated_data
+from ..services.auth import get_current_user, require_admin
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

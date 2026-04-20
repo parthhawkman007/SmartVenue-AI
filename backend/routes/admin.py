@@ -3,9 +3,9 @@ from typing import Optional
 from typing import Any
 import logging
 
-from models.schemas import APIResponse, RoleAction, RoleUpdateRequest, success_response, EventType
-from services.auth import require_admin
-from firestore.database import get_db
+from ..models.schemas import APIResponse, RoleAction, RoleUpdateRequest, success_response, EventType
+from ..services.auth import require_admin
+from ..firestore.database import get_db
 from firebase_admin import auth
 import datetime
 

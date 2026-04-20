@@ -7,10 +7,10 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from app import app
-from services.auth import get_current_user, require_admin
+from backend.app import app
+from backend.services.auth import get_current_user, require_admin
 
 # --- MOCK CONTEXT ---
 async def mock_get_current_user():
@@ -25,10 +25,10 @@ async def mock_is_system_active():
 
 import unittest.mock
 # Patch across the relevant modules
-patcher1 = unittest.mock.patch('routes.environment.is_system_active', new=mock_is_system_active)
-patcher2 = unittest.mock.patch('routes.crowd.is_system_active', new=mock_is_system_active)
-patcher3 = unittest.mock.patch('routes.alerts.is_system_active', new=mock_is_system_active)
-patcher4 = unittest.mock.patch('routes.insights.is_system_active', new=mock_is_system_active)
+patcher1 = unittest.mock.patch('backend.routes.environment.is_system_active', new=mock_is_system_active)
+patcher2 = unittest.mock.patch('backend.routes.crowd.is_system_active', new=mock_is_system_active)
+patcher3 = unittest.mock.patch('backend.routes.alerts.is_system_active', new=mock_is_system_active)
+patcher4 = unittest.mock.patch('backend.routes.insights.is_system_active', new=mock_is_system_active)
 
 patcher1.start()
 patcher2.start()
@@ -119,7 +119,7 @@ def test_forbidden_crowd_write_for_standard_user():
     app.dependency_overrides[get_current_user] = mock_get_current_user
     app.dependency_overrides[require_admin] = mock_get_current_user
 
-@unittest.mock.patch('routes.admin.get_db', new_callable=unittest.mock.AsyncMock)
+@unittest.mock.patch('backend.routes.admin.get_db', new_callable=unittest.mock.AsyncMock)
 def test_firestore_interaction_mocked(mock_get_db):
     """Mocks Firebase to ensure gracefully handled isolated persistence layers natively without crashes."""
     # Simulate DB disconnection
@@ -147,9 +147,9 @@ def test_invalid_role_action_rejected():
     assert_schema(response.json())
     assert response.json()["status"] == "error"
 
-@unittest.mock.patch("routes.admin.auth.revoke_refresh_tokens")
-@unittest.mock.patch("routes.admin.auth.set_custom_user_claims")
-@unittest.mock.patch("routes.admin.auth.get_user")
+@unittest.mock.patch("backend.routes.admin.auth.revoke_refresh_tokens")
+@unittest.mock.patch("backend.routes.admin.auth.set_custom_user_claims")
+@unittest.mock.patch("backend.routes.admin.auth.get_user")
 def test_role_update_sets_custom_claims(mock_get_user, mock_set_claims, mock_revoke_tokens):
     """Admin role updates should write Firebase custom claims and revoke old sessions."""
     mock_get_user.return_value = object()
