@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
-from models.schemas import InsightsResponse
+from typing import Any
+from models.schemas import InsightsResponse, APIResponse, success_response, EventType
 from firestore.database import is_system_active
 from routes.crowd import fetch_and_map_zones
 from services.crowd_service import evaluate_insights
@@ -8,19 +8,9 @@ from services.auth import get_current_user
 
 router = APIRouter()
 
-@router.get("/insights", response_model=InsightsResponse)
-async def get_insights(event: str = "F1", user: dict = Depends(get_current_user)):
-    """
-    Generates AI-driven tactical insights and recommendations based on current zone density.
-    
-    - **event**: The physical domain mapping (e.g., 'F1', 'Football').
-    - **user**: Automated session context from Firebase Auth.
-    
-    Processing:
-    - Analyzes real-time zone metrics.
-    - Generates actionable field instructions.
-    - Triggers automated alert evaluations.
-    """
+@router.get("/insights", response_model=APIResponse[InsightsResponse])
+async def get_insights(event: EventType = EventType.F1, user: dict = Depends(get_current_user)) -> Any:
+    """Generates AI-driven tactical insights and recommendations based on current zone density."""
     if not await is_system_active():
         raise HTTPException(
             status_code=503,
@@ -40,4 +30,4 @@ async def get_insights(event: str = "F1", user: dict = Depends(get_current_user)
             sanitized_recommendations.append(rec)
         original_insights.recommendations = sanitized_recommendations
         
-    return original_insights
+    return success_response(original_insights, "Intelligence successfully processed")

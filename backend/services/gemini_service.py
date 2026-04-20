@@ -1,37 +1,37 @@
 import os
 import time
 import asyncio
+import logging
 import google.generativeai as genai
 from typing import Optional, Dict, Tuple
 
-# Pure in-memory cache natively tracking hash strings for exact execution bounds
-# Shape: { (zone, trend, event_type, rounded_density): (timestamp, payload_dict) }
+# Cache Shape: { (zone, trend, event_type, rounded_density): (timestamp, payload_dict) }
 GEMINI_CACHE: Dict[Tuple[str, str, str, int], Tuple[float, dict]] = {}
 CACHE_TTL = 300 # Expiration structurally set at 5 minutes to prevent stale drift
+logger = logging.getLogger(__name__)
 
-# Safe Configuration mapping securely preserving system startup integrity if key is absent natively
+# Safe Configuration mapping
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 if gemini_api_key:
     genai.configure(api_key=gemini_api_key)
 
-# Bind the most heavily optimized native flash architecture Model
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 async def generate_insight_async(zone: str, density: int, trend: str, event_type: str) -> Optional[dict]:
-    """Generates structural JSON outputs natively bypassing latency strictly using local memory hashing caches."""
-    # Round density to nearest 5 bounds aggressively clamping cache execution requests saving raw quotas
+    """Generates insights using cached limits."""
+    # Round density to nearest 5 bounds aggregating similar prompts
     rounded_density = 5 * round(density / 5)
     cache_key = (zone, trend, event_type, rounded_density)
     
     current_time = time.time()
     
-    # 1. Native Cache Intercept
+    # Cache Intercept
     if cache_key in GEMINI_CACHE:
         timestamp, cached_data = GEMINI_CACHE[cache_key]
         if current_time - timestamp < CACHE_TTL:
             return cached_data
             
-    # 2. Escape Fallback securely preventing trace explosions if API drops!
+    # Escape Fallback safely preventing drops
     if not gemini_api_key:
         return None
         
@@ -49,7 +49,6 @@ Line 3: An intelligent actionable recommendation for stadium control nodes dynam
 """
     
     try:
-        # Heavily restricted bounding tracking strictly catching failures under 3000ms thresholds
         response = await asyncio.wait_for(
             model.generate_content_async(prompt),
             timeout=2.8
@@ -68,11 +67,11 @@ Line 3: An intelligent actionable recommendation for stadium control nodes dynam
                 "recommendation": lines[2]
             }
             
-            # Persist structurally immediately into RAM caches mitigating heavy API execution intervals
+            # Persist correctly cleanly into RAM maps
             GEMINI_CACHE[cache_key] = (current_time, payload)
             return payload
             
     except Exception as e:
-        print(f"[GEMINI AI TRACE] Execution gracefully bypassed generating structural fallback logic natively: {e}")
+        logger.warning("Gemini insight generation failed, falling back to deterministic logic: %s", e)
         
     return None

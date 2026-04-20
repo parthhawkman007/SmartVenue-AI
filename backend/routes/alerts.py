@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
-from typing import List
-from models.schemas import Alert
+from typing import List, Any
+from models.schemas import Alert, APIResponse, success_response, EventType
 from firestore.database import is_system_active
 from routes.crowd import fetch_and_map_zones
 from services.crowd_service import evaluate_alerts
@@ -9,18 +8,9 @@ from services.auth import get_current_user
 
 router = APIRouter()
 
-@router.get("/alerts", response_model=List[Alert])
-async def get_alerts(event: str = "F1", user: dict = Depends(get_current_user)):
-    """
-    Retrieves a list of active security and safety alerts for the specified event domain.
-    
-    - **event**: The physical domain mapping (e.g., 'F1', 'Football').
-    - **user**: Automated session context from Firebase Auth.
-    
-    Roles:
-    - **Admin**: Receives all alerts including critical infrastructure threats.
-    - **User**: Receives filtered non-critical safety alerts only.
-    """
+@router.get("/alerts", response_model=APIResponse[List[Alert]])
+async def get_alerts(event: EventType = EventType.F1, user: dict = Depends(get_current_user)) -> Any:
+    """Retrieves actively tracked security and safety alerts for the designated domain."""
     if not await is_system_active():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -35,7 +25,6 @@ async def get_alerts(event: str = "F1", user: dict = Depends(get_current_user)):
             # Filter out critical alerts for standard user roles
             alerts = [a for a in alerts if a.level != "critical"]
             
-        return alerts
+        return success_response(alerts, "Alerts verified safely")
     except Exception as e:
-        print(f"[ALERTS ERROR] {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve intelligence alerts.")

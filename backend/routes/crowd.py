@@ -1,17 +1,20 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from fastapi.responses import JSONResponse
-from typing import List
-from models.schemas import ZoneDensity
+from typing import List, Any
+import logging
+
+from models.schemas import ZoneDensity, APIResponse, success_response, EventType
 from firestore.database import db, is_system_active
-from services.crowd_service import compute_trend, generate_simulated_data, map_zone_names
+from services.crowd_service import compute_trend, map_zone_names
+from services.simulator_service import generate_simulated_data
 from services.auth import get_current_user, require_admin
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 FALLBACK_CACHE: List[ZoneDensity] = []
 
 async def fetch_current_zones() -> List[ZoneDensity]:
-    """Helper method serving robust Firestore data safely throwing validation errors on logic fail loops."""
+    """Retrieve realtime zones from firestore safely."""
     if db is None:
         raise ValueError("Firestore uninitialized")
     
@@ -33,7 +36,7 @@ async def fetch_current_zones() -> List[ZoneDensity]:
     return zones
 
 def fallback_zones() -> List[ZoneDensity]:
-    """Graceful static data fallback identical to origin behavior but seamlessly adopting memory drifts natively."""
+    """Graceful static memory fallback."""
     global FALLBACK_CACHE
     if FALLBACK_CACHE: return FALLBACK_CACHE.copy()
     
@@ -45,11 +48,11 @@ def fallback_zones() -> List[ZoneDensity]:
         ZoneDensity(zone="Stage Area A", density=98, status="Very Crowded", source="fallback")
     ]
 
-async def fetch_and_map_zones(event: str) -> List[ZoneDensity]:
+async def fetch_and_map_zones(event: EventType) -> List[ZoneDensity]:
     try:
         zones = await fetch_current_zones()
-    except Exception as e:
-        print(f"Using fallback -> Traced DB Issue: {type(e).__name__}")
+    except Exception as exc:
+        logger.warning("Falling back to cached zones because Firestore fetch failed: %s", type(exc).__name__)
         zones = fallback_zones()
 
     # Deep memory mapping for drift computations and domain logic translating
@@ -61,16 +64,9 @@ async def fetch_and_map_zones(event: str) -> List[ZoneDensity]:
         
     return zones
 
-@router.get("/crowd", response_model=List[ZoneDensity])
-async def get_crowd(event: str = "F1", user: dict = Depends(get_current_user)):
-    """
-    Retrieves real-time crowd density metrics across all monitored zones.
-    
-    - **event**: The physical domain mapping (e.g., 'F1', 'Football').
-    
-    Returns a list of zones with their calculated density percentage, 
-    current status, and observed trends.
-    """
+@router.get("/crowd", response_model=APIResponse[List[ZoneDensity]])
+async def get_crowd(event: EventType = EventType.F1, user: dict = Depends(get_current_user)) -> Any:
+    """Retrieves real-time crowd density metrics across all monitored zones."""
     if not await is_system_active():
         raise HTTPException(
             status_code=503,
@@ -78,43 +74,48 @@ async def get_crowd(event: str = "F1", user: dict = Depends(get_current_user)):
         )
     
     try:
-        return await fetch_and_map_zones(event)
-    except Exception as e:
-        print(f"[CROWD ERROR] {e}")
+        zones = await fetch_and_map_zones(event)
+        return success_response(zones, "Crowd streams retrieved successfully")
+    except Exception:
         raise HTTPException(status_code=500, detail="Failed to retrieve crowd density streams.")
 
-@router.post("/crowd", response_model=ZoneDensity, status_code=status.HTTP_201_CREATED)
-async def create_or_update_crowd_density(data: ZoneDensity):
+@router.post("/crowd", response_model=APIResponse[ZoneDensity], status_code=status.HTTP_201_CREATED)
+async def create_or_update_crowd_density(
+    data: ZoneDensity,
+    _: dict = Depends(require_admin),
+) -> Any:
+    """Ingests physical IoT metrics."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database instance unavailable.")
+
     try:
         doc_ref = db.collection("crowd_data").document(data.zone)
         await doc_ref.set(data.model_dump())
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed securely.")
+        return success_response(data, "Density metrics committed safely")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to persist crowd density metrics.")
 
-@router.get("/simulate", response_model=List[ZoneDensity])
-async def simulate_crowd(event: str = "F1", user: dict = Depends(require_admin)):
-    """Rapid testing endpoint heavily jittering trends tracking physical deployments seamlessly to state memory maps."""
+@router.get("/simulate", response_model=APIResponse[List[ZoneDensity]])
+async def simulate_crowd(event: EventType = EventType.F1, user: dict = Depends(require_admin)) -> Any:
+    """Rapid testing endpoint heavily jittering trends."""
     if not await is_system_active():
-        return JSONResponse(content={"status": "idle", "message": "System inactive. Waiting for admin to start event."})
+        return {"status": "idle", "data": None, "message": "System inactive. Waiting for admin to start event."}
         
     global FALLBACK_CACHE
     zones = generate_simulated_data(event)
     
-    # Cache completely isolated array mapped correctly
     FALLBACK_CACHE = [ZoneDensity(**z.model_dump()) for z in zones]
     
     for z in zones:
         raw_zone = z.zone
         z.trend = compute_trend(raw_zone, z.density)
         
-        # Directly execute Firestore commits persistently fixing decoupled insights loops cleanly!
         if db is not None:
-             try:
-                 await db.collection("crowd_data").document(raw_zone).set(z.model_dump())
-             except Exception:
-                 pass
+            try:
+                await db.collection("crowd_data").document(raw_zone).set(z.model_dump())
+            except Exception as exc:
+                logger.warning("Failed to persist simulated zone '%s': %s", raw_zone, exc)
                  
         z.zone = map_zone_names(raw_zone, event)
         
-    return zones
+    return success_response(zones, "Simulation metrics updated")

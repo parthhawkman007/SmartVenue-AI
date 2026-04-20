@@ -1,23 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from typing import Any
+import logging
+
+from models.schemas import APIResponse, RoleAction, RoleUpdateRequest, success_response, EventType
 from services.auth import require_admin
 from firestore.database import get_db
+from firebase_admin import auth
 import datetime
 
-class RoleUpdateRequest(BaseModel):
-    uid: str
-    action: str
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin Controls"])
 
-@router.post("/system/start")
-async def start_system(event_type: str = "F1", user: dict = Depends(require_admin)):
-    """
-    Activates the global intelligence processing engine for a specific event domain.
-    
-    - **event_type**: The configuration mapping to apply (e.g., 'F1', 'Football').
-    - **user**: Admin credentials verification.
-    """
+@router.post("/system/start", response_model=APIResponse[dict])
+async def start_system(event_type: EventType = EventType.F1, user: dict = Depends(require_admin)) -> Any:
+    """Activates the global intelligence processing engine for a specific event domain."""
     db = await get_db()
     if not db:
         raise HTTPException(status_code=500, detail="Database instance unavailable.")
@@ -28,13 +25,11 @@ async def start_system(event_type: str = "F1", user: dict = Depends(require_admi
         "started_by": user["uid"],
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
     })
-    return {"status": "success", "message": f"System actively engaged mapping '{event_type}' seamlessly!"}
+    return success_response(None, f"System creatively engaged mapping '{event_type.value}'")
 
-@router.post("/system/stop")
-async def stop_system(user: dict = Depends(require_admin)):
-    """
-    Gracefully halts the intelligence processing engine and puts the system in IDLE mode.
-    """
+@router.post("/system/stop", response_model=APIResponse[dict])
+async def stop_system(user: dict = Depends(require_admin)) -> Any:
+    """Gracefully halts the active processing engine into IDLE modes."""
     db = await get_db()
     if not db:
         raise HTTPException(status_code=500, detail="Database instance unavailable.")
@@ -44,36 +39,28 @@ async def stop_system(user: dict = Depends(require_admin)):
         "stopped_by": user["uid"],
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
     }, merge=True)
-    return {"status": "success", "message": "System disengaged safely!"}
+    return success_response(None, "System disengaged safely")
 
-@router.post("/users/role")
-async def update_user_role(payload: RoleUpdateRequest, user: dict = Depends(require_admin)):
-    db = await get_db()
-    if not db:
-        raise HTTPException(status_code=500, detail="Database securely locked.")
-        
+@router.post("/users/role", response_model=APIResponse[dict])
+async def update_user_role(payload: RoleUpdateRequest, user: dict = Depends(require_admin)) -> Any:
+    """Manipulates administrative custom claims globally."""
     target_uid = payload.uid
     action = payload.action
     
-    # Critical self-demotion protection securely bounded natively
-    if target_uid == user["uid"] and action == "demote":
-        raise HTTPException(status_code=400, detail="Admins cannot logically demote themselves without transferring root.")
+    if target_uid == user["uid"] and action == RoleAction.DEMOTE:
+        raise HTTPException(status_code=400, detail="Admins cannot demote themselves.")
         
-    doc_ref = db.collection("users").document(target_uid)
-    doc_snap = await doc_ref.get()
-    
-    if not doc_snap.exists:
+    try:
+        auth.get_user(target_uid)
+    except auth.UserNotFoundError:
+        logger.warning("Role update requested for missing user '%s'", target_uid)
         raise HTTPException(status_code=404, detail="Target user not found.")
+    except Exception:
+        logger.exception("Unable to load Firebase user '%s'", target_uid)
+        raise HTTPException(status_code=500, detail="Unable to load target user.")
         
-    # Prevent structural lockout (Cannot demote the final operating Admin)
-    if action == "demote":
-        admins_query = db.collection("users").where("role", "==", "admin")
-        admins = await admins_query.get()
-        if len(admins) <= 1:
-            raise HTTPException(status_code=400, detail="Cannot cleanly drop the final administrative instance!")
-            
-    # Commit native change
-    new_role = "admin" if action == "promote" else "user"
-    await doc_ref.update({"role": new_role})
+    new_role = "admin" if action == RoleAction.PROMOTE else "user"
+    auth.set_custom_user_claims(target_uid, {"role": new_role})
+    auth.revoke_refresh_tokens(target_uid)
     
-    return {"status": "success", "message": f"Successfully mapped identity parameter natively to {new_role}."}
+    return success_response({"new_role": new_role}, f"Successfully mapped role to {new_role}")

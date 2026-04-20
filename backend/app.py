@@ -1,27 +1,32 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 import time
 
 from routes import crowd, insights, alerts, environment, admin
-from models.schemas import ZoneDensity, HealthResponse
-from firestore.database import db
+from models.schemas import success_response, error_response
+from firestore.database import db, setup_database
+from contextlib import asynccontextmanager
+
+from core.config import settings
+
+logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await setup_database()
+    yield
 
 app = FastAPI(
-    title="SmartVenue AI Intelligence Engine",
-    description="Production-ready scalable Crowd Management intelligence system."
+    title=settings.PROJECT_NAME,
+    description="Production-ready scalable Crowd Management intelligence system.",
+    version=settings.VERSION,
+    lifespan=lifespan
 )
-
-ALLOWED_ORIGINS = [
-    "https://smart-experience-ai.web.app",
-    "http://localhost:5000",
-    "http://127.0.0.1:5000",
-    "http://localhost:5500",
-    "http://127.0.0.1:5500"
-]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,45 +34,42 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """
-    Secure logging middleware tracking API performance.
-    Captures execution time without exposing sensitive request data.
-    """
+    """Secure logging middleware tracking API performance."""
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
-    print(f"[API] {request.method} {request.url.path} - executed in {process_time:.4f}s")
+    logger.info(
+        "API request processed",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "duration_seconds": round(process_time, 4),
+            "status_code": response.status_code,
+        },
+    )
     return response
 
 from fastapi.responses import JSONResponse
 import datetime
+from fastapi.exceptions import RequestValidationError
+from fastapi import HTTPException
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """
-    Global Exception mapping to secure abstract JSON schemas.
-    Obfuscates raw stack traces in production to prevent information leakage.
-    """
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "An internal server error occurred.", 
-            "type": type(exc).__name__,
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
-        }
-    )
+    status_code = getattr(exc, "status_code", 500)
+    detail = getattr(exc, "detail", "An internal server error occurred.")
+    return JSONResponse(status_code=status_code, content=error_response(str(detail)))
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code, content=error_response(str(exc.detail)))
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(status_code=422, content=error_response("Data validation logically failed"))
 @app.get("/")
 async def root():
-    """
-    Root system status endpoint for heartbeat and health pings.
-    """
-    return {
-        "status": "online",
-        "service": "SmartVenue AI Intelligence Engine",
-        "version": "1.0.0",
-        "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
-    }
+    return success_response({"service": settings.PROJECT_NAME, "version": settings.VERSION}, "System is online.")
 
 # Connect Modulated Fast API Routers natively
 app.include_router(crowd.router, tags=["Crowd Streams"])
@@ -76,37 +78,11 @@ app.include_router(alerts.router, tags=["Watchdog Alerts"])
 app.include_router(environment.router, tags=["Structural Environment"])
 app.include_router(admin.router)
 
-@app.on_event("startup")
-async def setup():
-    if db is not None:
-        try:
-            docs = [doc async for doc in db.collection("crowd_data").limit(1).stream()]
-            if not docs:
-                samples = [
-                    ZoneDensity(zone="Main Entrance", density=85, status="Very Crowded"),
-                    ZoneDensity(zone="Food Court", density=60, status="Moderate"),
-                    ZoneDensity(zone="Restrooms", density=15, status="Low"),
-                    ZoneDensity(zone="VIP Lounge", density=5, status="Low"),
-                    ZoneDensity(zone="Stage Area A", density=98, status="Very Crowded")
-                ]
-                for s in samples:
-                    doc_data = s.model_dump()
-                    doc_data["source"] = "firestore"
-                    await db.collection("crowd_data").document(s.zone).set(doc_data)
-        except Exception as e:
-            print(f"[INIT ERROR] Failed automatic DB seeding: {e}")
-
-@app.get("/health", response_model=HealthResponse)
+ 
+@app.get("/health")
 async def health_check():
-    """Validation API health endpoint exposed natively matching structural compliances."""
-    return HealthResponse(
-        status="ok", 
-        service="Smart Experience AI",
-        timestamp=datetime.datetime.utcnow().isoformat() + "Z"
-    )
+    return success_response({"service": settings.PROJECT_NAME}, "Service is healthy")
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-    port = int(os.environ.get("PORT", 8080))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=settings.DEFAULT_PORT, reload=False)

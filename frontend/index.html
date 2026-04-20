@@ -90,19 +90,23 @@
         }
 
         .nav-btn {
-            padding: 10px 16px;
-            border-radius: 6px; /* Rectangular but slightly rounded for modern feel */
-            color: #9ca3af; /* SaaS muted text */
-            cursor: pointer;
-            font-weight: 500;
+            color: #9ca3af;
             font-size: 0.9rem;
-            letter-spacing: 0.01em;
+            font-weight: 500;
+            padding: 12px 15px;
+            border-radius: 6px;
+            cursor: pointer;
             transition: all 0.2s ease;
             display: flex;
             align-items: center;
             gap: 12px;
             position: relative;
+            border: none;
             border-left: 2px solid transparent; /* Prepare for active state */
+            background: none;
+            width: 100%;
+            text-align: left;
+            font-family: inherit;
         }
 
         .nav-btn:hover {
@@ -373,12 +377,19 @@
     <div id="global-loader" aria-live="assertive" role="alert">Fetching real-time intelligence...</div>
 
     <!-- Emergency Toast Notification -->
-    <div id="emergency-toast" style="position:fixed; top:80px; left:50%; transform:translateX(-50%); background:var(--danger); color:white; padding:12px 24px; border-radius:30px; font-weight:bold; z-index:3000; display:none; align-items:center; gap:10px; box-shadow:0 10px 25px rgba(239,68,68,0.4); animation:slideDown 0.3s ease;">
+    <div id="emergency-toast" style="position:fixed; top:80px; left:50%; transform:translateX(-50%); background:var(--danger); color:white; padding:12px 24px; border-radius:30px; font-weight:bold; z-index:3000; display:none; align-items:center; gap:10px; box-shadow:0 10px 25px rgba(239,68,68,0.4); animation:slideDown 0.3s ease;" role="alert" aria-live="assertive">
         <span>⚡</span> Emergency Scenario Activated
+    </div>
+
+    <!-- Global Error Toast Notification -->
+    <div id="global-error-toast" style="position:fixed; top:20px; right:20px; background:var(--danger); color:white; padding:15px 25px; border-radius:8px; font-weight:600; font-size:0.95rem; z-index:4000; display:none; align-items:center; gap:12px; box-shadow:0 10px 25px rgba(239,68,68,0.3); animation:slideLeft 0.3s ease;" role="alert" aria-live="assertive">
+        <i data-lucide="alert-circle" style="width:20px; height:20px;"></i>
+        <span id="global-error-text">An error occurred.</span>
     </div>
 
     <style>
         @keyframes slideDown { from { top: -50px; opacity:0; } to { top: 80px; opacity:1; } }
+        @keyframes slideLeft { from { right: -100px; opacity:0; } to { right: 20px; opacity:1; } }
     </style>
 
     <!-- Auth Container -->
@@ -404,7 +415,7 @@
                 Continue with Google
             </button>
 
-            <div class="auth-toggle" id="auth-toggle-mode" role="button" aria-label="Switch between sign in and sign up modes">Need an account? Sign up</div>
+            <button class="auth-toggle" id="auth-toggle-mode" aria-label="Switch between sign in and sign up modes" style="background:none; border:none; padding:0; display:inline-block;">Need an account? Sign up</button>
         </div>
     </div>
 
@@ -419,24 +430,24 @@
             </div>
             
             <nav class="nav-menu">
-                <div class="nav-btn active" data-target="dashboard" role="button" aria-label="Navigate to Live Dashboard">
+                <button class="nav-btn active" data-target="dashboard" aria-label="Navigate to Live Dashboard" aria-current="page">
                     <i data-lucide="layout-dashboard"></i> Live Dashboard
-                </div>
-                <div class="nav-btn" data-target="analytics" role="button" aria-label="Navigate to Topology Analytics">
+                </button>
+                <button class="nav-btn" data-target="analytics" aria-label="Navigate to Topology Analytics">
                     <i data-lucide="bar-chart-3"></i> Analytics
-                </div>
-                <div class="nav-btn" data-target="alerts" role="button" aria-label="Navigate to Serious Alerts Center">
+                </button>
+                <button class="nav-btn" data-target="alerts" aria-label="Navigate to Serious Alerts Center">
                     <i data-lucide="alert-triangle"></i> Security Alerts
-                </div>
-                <div class="nav-btn" data-target="insights" role="button" aria-label="Navigate to AI Intelligence Panel">
+                </button>
+                <button class="nav-btn" data-target="insights" aria-label="Navigate to AI Intelligence Panel">
                     <i data-lucide="lightbulb"></i> Intelligence
-                </div>
-                <div class="nav-btn" data-target="environment" role="button" aria-label="Navigate to Environmental Conditions">
+                </button>
+                <button class="nav-btn" data-target="environment" aria-label="Navigate to Environmental Conditions">
                     <i data-lucide="cloud"></i> Environment
-                </div>
-                <div class="nav-btn admin-only" style="margin-top: 20px;" data-target="controls" id="nav-btn-controls" role="button" aria-label="Navigate to Administrative System Controls">
+                </button>
+                <button class="nav-btn admin-only" style="margin-top: 20px;" data-target="controls" id="nav-btn-controls" aria-label="Navigate to Administrative System Controls">
                     <i data-lucide="settings"></i> System Controls
-                </div>
+                </button>
             </nav>
             
             <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--glass-border); display: flex; flex-direction: column; gap: 12px;">

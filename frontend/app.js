@@ -12,7 +12,6 @@ if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
 const auth = firebase.auth();
-const db = firebase.firestore();
 
 let currentToken = null;
 let currentRole = "user";
@@ -68,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const navBtns = document.querySelectorAll('.nav-btn');
 
     const navigateTo = (target) => {
-        // Change UI Title dynamically mapped securely without library overhead
+        // Update UI Title
         const titleMap = {
             'dashboard': 'Live Dashboard',
             'analytics': 'Topology Analytics',
@@ -79,16 +78,21 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         DOM.viewTitle.innerText = titleMap[target] || 'Dashboard';
         
-        // Hide all views cleanly, toggle structural classes native DOM arrays
+        // Hide inactive views
         views.forEach(v => v.classList.remove('active'));
         document.getElementById(`view-${target}`).classList.add('active');
 
-        // Toggle strict UI navigation buttons cleanly bounding UX parameters
-        navBtns.forEach(btn => btn.classList.remove('active'));
-        document.querySelector(`.nav-btn[data-target="${target}"]`).classList.add('active');
+        // Toggle active button states
+        navBtns.forEach(btn => {
+            btn.classList.remove('active');
+            btn.removeAttribute('aria-current');
+        });
+        const activeButton = document.querySelector(`.nav-btn[data-target="${target}"]`);
+        activeButton.classList.add('active');
+        activeButton.setAttribute('aria-current', 'page');
         
         activeView = target;
-        // Dynamic Route handling gracefully enforcing isolated API renders
+        // Fetch data dynamically
         fetchViewData(target);
     };
 
@@ -127,14 +131,33 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + d.getMilliseconds().toString().padStart(3,'0');
     };
 
+    const sanitizeHTML = (str) => {
+        return String(str).replace(/[&<>'"]/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[match]);
+    };
+
+    const renderInlineMessage = (target, message, color = 'var(--text-muted)') => {
+        target.innerHTML = `<div style="color: ${color}; font-size: 1.1rem; text-align: center; padding: 40px;">${sanitizeHTML(message)}</div>`;
+    };
+
+    const clearViewData = () => {
+        DOM.analytics.innerHTML = '';
+        DOM.insights.innerHTML = '';
+        DOM.alerts.innerHTML = '';
+        DOM.envGrid.innerHTML = '';
+    };
+
     // View Renderers Matrix
     const renderDashboard = (zones) => {
+        if (!zones || zones.length === 0) {
+            renderInlineMessage(DOM.zones, 'No active crowd monitoring streams detected currently.');
+            return;
+        }
         DOM.zones.innerHTML = zones.map(z => {
             const colorParam = getStateColor(z.density);
             return `
                 <div class="zone-card" style="--state-color: ${colorParam};">
                     <div class="zone-header">
-                        <div class="zone-name">${z.zone}</div>
+                        <div class="zone-name">${sanitizeHTML(z.zone)}</div>
                         ${getTrendIcon(z.trend)}
                     </div>
                     <div class="zone-metrics">
@@ -142,8 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="density-value">${z.density}%</div>
                         </div>
                         <div class="zone-details">
-                            <div class="status-badge" style="box-shadow: 0 0 10px ${colorParam}40">${z.status}</div>
-                            <div class="timestamp">SYNC: ${formatTime(z.timestamp)}</div>
+                            <div class="status-badge" style="box-shadow: 0 0 10px ${colorParam}40">${sanitizeHTML(z.status)}</div>
+                            <div class="timestamp">SYNC: ${sanitizeHTML(formatTime(z.timestamp))}</div>
                         </div>
                     </div>
                 </div>
@@ -152,11 +175,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderAnalytics = (zones) => {
-        // Native sort algorithms natively extracting highest density threat mappings down cleanly
+        if (!zones || zones.length === 0) {
+            renderInlineMessage(DOM.analytics, 'No analytical data available for processing.');
+            return;
+        }
+        // Sort by density descending
         const sorted = [...zones].sort((a,b) => b.density - a.density);
         DOM.analytics.innerHTML = sorted.map(z => `
             <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 15px 20px; display: flex; align-items:center; justify-content:space-between;">
-                <div style="font-size: 1.1rem; font-weight: 600;">${z.zone}</div>
+                <div style="font-size: 1.1rem; font-weight: 600;">${sanitizeHTML(z.zone)}</div>
                 <div style="display:flex; align-items:center; gap: 20px;">
                     <div style="width: 250px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow:hidden;">
                         <div style="height: 100%; width: ${z.density}%; background: ${getStateColor(z.density)};"></div>
@@ -178,9 +205,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         DOM.alerts.innerHTML = displayAlerts.map(a => `
-            <div class="alert-item alert-${a.level}">
-                <div style="font-weight: 700; margin-bottom: 5px; color: white;">⚠️ ${a.zone} [${a.level.toUpperCase()}]</div>
-                <div style="color: rgba(255,255,255,0.8);">${a.message}</div>
+            <div class="alert-item alert-${sanitizeHTML(a.level)}">
+                <div style="font-weight: 700; margin-bottom: 5px; color: white;">⚠️ ${sanitizeHTML(a.zone)} [${sanitizeHTML(a.level).toUpperCase()}]</div>
+                <div style="color: rgba(255,255,255,0.8);">${sanitizeHTML(a.message)}</div>
             </div>
         `).join('');
     };
@@ -202,8 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         DOM.insights.innerHTML = displayRecs.map(r => `
             <div class="insight-item">
-                <div style="font-weight: 700; font-size: 1.1rem; color: white; margin-bottom: 6px;">🎯 ${r.action}</div>
-                <div style="color: rgba(255,255,255,0.7); font-size: 0.95rem;">REASON INTEGRITY: ${r.reason}</div>
+                <div style="font-weight: 700; font-size: 1.1rem; color: white; margin-bottom: 6px;">🎯 ${sanitizeHTML(r.action)}</div>
+                <div style="color: rgba(255,255,255,0.7); font-size: 0.95rem;">REASON INTEGRITY: ${sanitizeHTML(r.reason)}</div>
             </div>
         `).join('');
     };
@@ -217,46 +244,98 @@ document.addEventListener('DOMContentLoaded', () => {
         userRole: null
     };
 
-    const fetchViewData = async (target) => {
+    /**
+     * Display non-blocking global error toast UI
+     */
+    const showGlobalError = (message) => {
+        const toast = document.getElementById('global-error-toast');
+        const text = document.getElementById('global-error-text');
+        if (!toast || !text) return;
+        
+        text.innerText = message;
+        toast.style.display = 'flex';
+        
+        setTimeout(() => {
+            toast.style.display = 'none';
+        }, 4000);
+    };
+
+    /**
+     * Singleton API Client enforcing consistent wrappers, headers, and request debouncing.
+     */
+    const apiClient = {
+        cache: {},
+        
+        async fetch(endpoint, options = {}, force = false) {
+            if (!currentToken) return null;
+            
+            const evt = DOM.eventTypeToggle.value;
+            const url = `${API_BASE}${endpoint}?event=${evt}`;
+            
+            // Prevent duplicate fetches on rapid tab switching
+            if (!force && this.cache[url] && (Date.now() - this.cache[url].time < 2000)) {
+                return this.cache[url].data;
+            }
+            
+            const headers = { 
+                "Authorization": `Bearer ${currentToken}`,
+                "Content-Type": "application/json",
+                ...(options.headers || {})
+            };
+            
+            try {
+                const res = await fetch(url, { ...options, headers });
+                
+                if (res.status === 401 || res.status === 403) {
+                    console.error("Auth session expired or insufficient privileges.");
+                    await auth.signOut();
+                    return null;
+                }
+                
+                const responsePayload = await res.json().catch(() => ({ status: "error", message: "Invalid JSON response" }));
+                
+                if (!res.ok || responsePayload.status === "error") {
+                    throw new Error(responsePayload.message || responsePayload.detail || `HTTP Error ${res.status}`);
+                }
+                
+                if (responsePayload.status === 'idle') {
+                    return { idle: true, message: responsePayload.message };
+                }
+                
+                // Cache successful structural queries safely
+                if (options.method === 'GET' || !options.method) {
+                    this.cache[url] = { time: Date.now(), data: responsePayload.data };
+                }
+                
+                return responsePayload.data;
+                
+            } catch (err) {
+                console.error(`[API ERROR] ${endpoint}:`, err.message);
+                throw err;
+            }
+        }
+    };
+
+    const fetchViewData = async (target, forceSync = false) => {
         /**
          * Fetches situational data for the active dashboard view.
          * Implements structural try-catch with global loading state management.
          */
         if (!currentToken) return;
+        if (target === 'controls') return;
+        
         DOM.loader.classList.add('active');
         try {
-            const evt = DOM.eventTypeToggle.value;
-            const params = `?event=${evt}`;
-            const headers = { 
-                "Authorization": `Bearer ${currentToken}`,
-                "Content-Type": "application/json"
-            };
-            
             let domain = target;
             if (target === 'dashboard' || target === 'analytics') domain = 'crowd';
-            if (target === 'controls') return; 
             
-            const res = await fetch(`${API_BASE}/${domain}${params}`, { headers });
+            const data = await apiClient.fetch(`/${domain}`, {}, forceSync);
             
-            if (res.status === 401 || res.status === 403) {
-                console.error("Auth session expired or insufficient privileges.");
-                await auth.signOut();
-                return;
-            }
-
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({ detail: "Unknown server error" }));
-                throw new Error(errData.detail || `HTTP ${res.status}`);
-            }
-
-            const data = await res.json();
+            if (!data) return; // Unauthenticated drop
             
-            if (data.status === 'idle') {
-                DOM.zones.innerHTML = '<div style="color:var(--safe)">System Idle. Waiting for Admin activation.</div>';
-                DOM.analytics.innerHTML = '';
-                DOM.insights.innerHTML = '';
-                DOM.alerts.innerHTML = '';
-                DOM.envGrid.innerHTML = '';
+            if (data.idle) {
+                renderInlineMessage(DOM.zones, data.message || 'System Idle. Waiting for Admin activation.', 'var(--safe)');
+                clearViewData();
                 return;
             }
             
@@ -270,16 +349,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderInsights(state.insights.recommendations || []);
             } else if (domain === 'alerts') {
                 state.alerts = data;
-                renderAlerts(state.alerts);
+                renderAlerts(state.alerts || []);
             } else if (domain === 'environment') {
                 state.environment = data;
                 renderEnvironment(state.environment);
             }
         } catch (err) {
-            console.error(`[API FETCH ERROR] ${target}:`, err);
-            // Human-readable error polish
-            const msg = `Unable to load ${target}. Please check system connectivity or try again.`;
-            if (target === 'dashboard') DOM.zones.innerHTML = `<div style="color:var(--danger)">${msg}</div>`;
+            const msg = `Unable to load ${target}. ${err.message || 'Check system connectivity.'}`;
+            if (target === 'dashboard') {
+                renderInlineMessage(DOM.zones, msg, 'var(--danger)');
+            } else {
+                showGlobalError(msg);
+            }
         } finally {
             DOM.loader.classList.remove('active');
             // Update Sync Status Panel
@@ -302,20 +383,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (envData && envData.event_phase) {
             DOM.envGrid.innerHTML = `
                 <div class="metric-card">
-                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px;">Active Event Phase Boundary</div>
-                    <div style="font-size: 1.4rem; font-weight: 700; color: white;">${envData.event_phase}</div>
+                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px;">Active Event Phase</div>
+                    <div style="font-size: 1.4rem; font-weight: 700; color: white;">${sanitizeHTML(envData.event_phase)}</div>
                 </div>
                 <div class="metric-card">
-                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px;">Meteorological Structural Conditions</div>
-                    <div style="font-size: 1.4rem; font-weight: 700; color: white;">${envData.weather_condition}</div>
+                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px;">Meteorological Conditions</div>
+                    <div style="font-size: 1.4rem; font-weight: 700; color: white;">${sanitizeHTML(envData.weather_condition)}</div>
                 </div>
                 <div class="metric-card">
                     <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px;">Thermal Sensors</div>
-                    <div style="font-size: 1.4rem; font-weight: 700; color: var(--warning);">${envData.temperature_celsius}°C</div>
+                    <div style="font-size: 1.4rem; font-weight: 700; color: var(--warning);">${sanitizeHTML(envData.temperature_celsius)}°C</div>
                 </div>
                 <div class="metric-card">
-                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px;">Moisture / Air Integrity</div>
-                    <div style="font-size: 1.4rem; font-weight: 700; color: var(--empty);">${envData.humidity_percent}%</div>
+                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px;">Humidity Integrity</div>
+                    <div style="font-size: 1.4rem; font-weight: 700; color: var(--empty);">${sanitizeHTML(envData.humidity_percent)}%</div>
                 </div>
             `;
         } else {
@@ -328,14 +409,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (shouldSimulate) {
             try {
-                const evt = DOM.eventTypeToggle.value;
-                const params = `?event=${evt}`;
-                const headers = { "Authorization": `Bearer ${currentToken}` };
-                await fetch(`${API_BASE}/simulate${params}`, { headers }).catch(e => console.warn("API Simulate Hook Error.", e));
+                await apiClient.fetch('/simulate', { method: 'GET' }, true).catch(e => console.warn("API Simulate Hook Error.", e));
             } catch (error) {}
         }
 
-        // Delegate exclusively to Active View to permanently prevent cross-tab state overwrites and flickering
         await fetchViewData(activeView);
     };
 
@@ -367,30 +444,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const toggleSystemActiveState = (isActive) => {
+        DOM.systemStatusIndicator.style.background = isActive ? 'var(--safe)' : '#666';
+        DOM.systemStatusText.innerText = isActive ? 'ACTIVE' : 'IDLE';
+        DOM.systemStatusText.style.color = isActive ? 'var(--safe)' : 'var(--text-muted)';
+        
+        DOM.autoToggle.checked = isActive;
+        DOM.autoToggle.dispatchEvent(new Event('change'));
+    };
+
     if (DOM.adminStartSystemBtn) {
         DOM.adminStartSystemBtn.addEventListener('click', async () => {
             if (!currentToken) return;
             DOM.loader.classList.add('active');
             try {
-                const evt = DOM.eventTypeToggle.value;
-                const res = await fetch(`${API_BASE}/admin/system/start?event_type=${evt}`, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${currentToken}` }
-                });
-                if (res.ok) {
-                    DOM.systemStatusIndicator.style.background = 'var(--safe)';
-                    DOM.systemStatusText.innerText = 'ACTIVE';
-                    DOM.systemStatusText.style.color = 'var(--safe)';
-                    
-                    DOM.autoToggle.checked = true;
-                    DOM.autoToggle.dispatchEvent(new Event('change'));
-                } else {
-                    const err = await res.json();
-                    alert(`System Activation Failed: ${err.detail || "Unknown reason"}`);
+                const data = await apiClient.fetch("/admin/system/start", { method: "POST" }, true);
+                if (data || data === null) {
+                    toggleSystemActiveState(true);
                 }
             } catch (e) {
                 console.error("[ADMIN START ERROR]", e);
-                alert("Critical failure during system engagement.");
+                showGlobalError(`Activation Failed: ${e.message || 'Critical failure during system engagement.'}`);
             } finally {
                 DOM.loader.classList.remove('active');
             }
@@ -402,31 +476,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!currentToken) return;
             DOM.loader.classList.add('active');
             try {
-                const res = await fetch(`${API_BASE}/admin/system/stop`, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${currentToken}` }
-                });
-                if (res.ok) {
-                    DOM.systemStatusIndicator.style.background = '#666';
-                    DOM.systemStatusText.innerText = 'IDLE';
-                    DOM.systemStatusText.style.color = 'var(--text-muted)';
-                    
-                    DOM.autoToggle.checked = false;
-                    DOM.autoToggle.dispatchEvent(new Event('change'));
-                } else {
-                    alert("Failed to stop system cleanly.");
+                const data = await apiClient.fetch("/admin/system/stop", { method: "POST" }, true);
+                if (data || data === null) {
+                    toggleSystemActiveState(false);
                 }
             } catch (e) {
                 console.error("[ADMIN STOP ERROR]", e);
+                showGlobalError(`Deactivation Failed: ${e.message}`);
             } finally {
                 DOM.loader.classList.remove('active');
             }
         });
     }
 
-    // ----------------------------------------------------
-    // Authentication & Role Logic Systematically Intercepted
-    // ----------------------------------------------------
+    // Authentication & Role Logic
     let isSignup = false;
     DOM.authToggle.addEventListener('click', () => {
         isSignup = !isSignup;
@@ -436,10 +499,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     DOM.authForm.addEventListener('submit', async (e) => {
-        /**
-         * Orchestrates the authentication lifecycle.
-         * Includes structural input validation to prevent redundant Firebase pings.
-         */
         e.preventDefault();
         const email = DOM.authEmail.value.trim();
         const password = DOM.authPassword.value;
@@ -484,63 +543,31 @@ document.addEventListener('DOMContentLoaded', () => {
         await auth.signOut();
     });
 
-    // Handle Auth States natively blocking arrays securely
     auth.onAuthStateChanged(async (user) => {
-        /**
-         * Master session observer.
-         * Enforces role-based UI mapping and manages secure token propagation.
-         */
         if (user) {
-            // Retrieve JWT for Backend Execution
             currentToken = await user.getIdToken();
+            const tokenResult = await user.getIdTokenResult();
+            currentRole = tokenResult.claims.role || 'user';
+            state.userRole = currentRole;
+            
             DOM.loginContainer.style.display = 'none';
             DOM.appContainer.style.display = 'block';
-            
-            // Map UI dynamically
             DOM.userDisplayEmail.innerText = user.email;
+            DOM.userDisplayRole.innerText = currentRole;
             
-            // Manage Structural Roles from Firestore
-            try {
-                const userDocRef = db.collection('users').doc(user.uid);
-                let userDoc = await userDocRef.get();
-                
-                if (!userDoc.exists) {
-                    const ADMIN_EMAIL = "bhardwajparth185@gmail.com";
-                    const assignedRole = (user.email === ADMIN_EMAIL) ? 'admin' : 'user';
-                    
-                    await userDocRef.set({
-                        uid: user.uid,
-                        email: user.email,
-                        role: assignedRole,
-                        created_at: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    
-                    currentRole = assignedRole;
-                } else {
-                    currentRole = userDoc.data().role || 'user';
-                }
-                
-                state.userRole = currentRole; // Sync to global state
-                DOM.userDisplayRole.innerText = currentRole;
-                
-                if (currentRole === 'admin') {
-                    DOM.userDisplayRole.style.color = 'var(--primary)';
-                    DOM.adminOnlyBtns.forEach(el => el.style.display = 'flex');
-                    DOM.simulateBtn.style.display = 'block';
-                } else {
-                    DOM.userDisplayRole.style.color = '#9ca3af';
-                    DOM.adminOnlyBtns.forEach(el => el.style.display = 'none');
-                    DOM.simulateBtn.style.display = 'none';
-                }
-
-                // Immediately Trigger execution bounds cleanly now authorized!
-                triggerFullSyncCycle(false);
-            } catch (err) {
-                console.error("[ROLE SYNC ERROR]", err);
-                alert("Critical error retrieving user privileges. Some features may be locked.");
+            if (currentRole === 'admin') {
+                DOM.userDisplayRole.style.color = 'var(--primary)';
+                DOM.adminOnlyBtns.forEach(el => el.style.display = 'flex');
+                DOM.simulateBtn.style.display = 'block';
+            } else {
+                DOM.userDisplayRole.style.color = '#9ca3af';
+                DOM.adminOnlyBtns.forEach(el => el.style.display = 'none');
+                DOM.simulateBtn.style.display = 'none';
             }
+
+            triggerFullSyncCycle(false);
+            
         } else {
-            // Reset to Login State seamlessly dropping arrays avoiding stale ghosts
             if (syncInterval) clearInterval(syncInterval);
             currentToken = null;
             currentRole = "user";
