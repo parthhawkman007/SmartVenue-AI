@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
 from typing import Any
 import logging
 
@@ -13,19 +14,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin Controls"])
 
 @router.post("/system/start", response_model=APIResponse[dict])
-async def start_system(event_type: EventType = EventType.F1, user: dict = Depends(require_admin)) -> Any:
+async def start_system(
+    event_type: EventType = EventType.F1,
+    event: Optional[EventType] = None,
+    user: dict = Depends(require_admin),
+) -> Any:
     """Activates the global intelligence processing engine for a specific event domain."""
     db = await get_db()
     if not db:
         raise HTTPException(status_code=500, detail="Database instance unavailable.")
+
+    selected_event = event or event_type
         
     await db.collection("system_state").document("global").set({
         "active": True,
-        "event_type": event_type,
+        "event_type": selected_event.value,
         "started_by": user["uid"],
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
     })
-    return success_response(None, f"System creatively engaged mapping '{event_type.value}'")
+    return success_response(None, f"System creatively engaged mapping '{selected_event.value}'")
 
 @router.post("/system/stop", response_model=APIResponse[dict])
 async def stop_system(user: dict = Depends(require_admin)) -> Any:

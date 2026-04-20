@@ -270,7 +270,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!currentToken) return null;
             
             const evt = DOM.eventTypeToggle.value;
-            const url = `${API_BASE}${endpoint}?event=${evt}`;
+            const query = new URLSearchParams(options.query || {});
+            if (!query.has('event') && !query.has('event_type') && !endpoint.startsWith("/admin")) {
+                query.set('event', evt);
+            }
+            const querySuffix = query.toString() ? `?${query.toString()}` : '';
+            const url = `${API_BASE}${endpoint}${querySuffix}`;
             
             // Prevent duplicate fetches on rapid tab switching
             if (!force && this.cache[url] && (Date.now() - this.cache[url].time < 2000)) {
@@ -284,7 +289,8 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             
             try {
-                const res = await fetch(url, { ...options, headers });
+                const { query: _query, ...requestOptions } = options;
+                const res = await fetch(url, { ...requestOptions, headers });
                 
                 if (res.status === 401 || res.status === 403) {
                     console.error("Auth session expired or insufficient privileges.");
@@ -458,9 +464,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!currentToken) return;
             DOM.loader.classList.add('active');
             try {
-                const data = await apiClient.fetch("/admin/system/start", { method: "POST" }, true);
+                const data = await apiClient.fetch(
+                    "/admin/system/start",
+                    { method: "POST", query: { event_type: DOM.eventTypeToggle.value } },
+                    true
+                );
                 if (data || data === null) {
                     toggleSystemActiveState(true);
+                    navigateTo('dashboard');
                 }
             } catch (e) {
                 console.error("[ADMIN START ERROR]", e);
